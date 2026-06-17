@@ -47,7 +47,7 @@ export function CustomerModal({ open, onClose, onSubmit, initialData }: Customer
     if (!form.phone.trim()) {
       e.phone = '请输入联系电话';
     } else if (!validatePhone(form.phone.trim())) {
-      e.phone = '请输入正确的11位手机号';
+      e.phone = '请输入有效的联系电话（支持手机号、座机、400电话等）';
     }
     setErrors(e);
     return Object.keys(e).length === 0;
@@ -147,16 +147,18 @@ export function CustomerModal({ open, onClose, onSubmit, initialData }: Customer
               </label>
               <input
                 type="tel"
-                placeholder="如：13800138000"
+                placeholder="如：13800138000 / 010-12345678"
                 value={form.phone}
-                maxLength={11}
+                maxLength={50}
                 onChange={(e) => {
-                  const v = e.target.value.replace(/\D/g, '');
-                  setForm({ ...form, phone: v });
+                  setForm({ ...form, phone: e.target.value });
                   if (errors.phone) setErrors({ ...errors, phone: '' });
                 }}
                 className={`input-field ${submitted && errors.phone ? 'border-status-lost focus:border-status-lost focus:ring-status-lost/10' : ''}`}
               />
+              <p className="text-[11px] text-slate-400 mt-1.5 font-medium leading-relaxed">
+                支持多种格式：手机号、带区号座机（010-12345678）、400电话、带分机号（转/ext）等
+              </p>
               {submitted && errors.phone && (
                 <p className="flex items-center gap-1 mt-1.5 text-xs text-status-lost font-medium">
                   <AlertCircle className="w-3.5 h-3.5" /> {errors.phone}

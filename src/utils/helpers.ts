@@ -40,5 +40,9 @@ export function getRelativeTime(isoString: string): string {
 }
 
 export function validatePhone(phone: string): boolean {
-  return /^1[3-9]\d{9}$/.test(phone);
+  const cleaned = phone.replace(/\s+/g, '');
+  const digitCount = (cleaned.match(/\d/g) || []).length;
+  if (digitCount < 5) return false;
+  const validChars = /^[\d\s\-\(\)\+#\.，,（）转分机extEXT]*$/;
+  return validChars.test(phone);
 }
