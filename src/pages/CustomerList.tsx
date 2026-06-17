@@ -1,29 +1,23 @@
-import { useState, useMemo } from 'react';
+import { useState } from 'react';
 import { Plus, Inbox } from 'lucide-react';
 import { StatsPieChart } from '../components/dashboard/StatsPieChart';
 import { StatsCards } from '../components/dashboard/StatsCards';
 import { SearchBar } from '../components/customer/SearchBar';
 import { CustomerCard } from '../components/customer/CustomerCard';
 import { CustomerModal } from '../components/customer/CustomerModal';
-import { useCustomerStore } from '../store/useCustomerStore';
-import type { CustomerFormData } from '../types';
+import { useCustomerFilter } from '../hooks/useCustomerFilter';
 
 export function CustomerList() {
-  const [query, setQuery] = useState('');
-  const [statusFilter, setStatusFilter] = useState('all');
   const [modalOpen, setModalOpen] = useState(false);
-  const searchFilter = useCustomerStore((s) => s.searchFilter);
-  const addCustomer = useCustomerStore((s) => s.addCustomer);
-
-  const filteredCustomers = useMemo(
-    () => searchFilter(query, statusFilter),
-    [query, statusFilter, searchFilter],
-  );
-
-  const handleAddCustomer = (data: CustomerFormData) => {
-    addCustomer(data);
-    setModalOpen(false);
-  };
+  const {
+    query,
+    setQuery,
+    statusFilter,
+    setStatusFilter,
+    customers,
+    resultCount,
+    hasActiveFilters,
+  } = useCustomerFilter();
 
   return (
     <div className="space-y-6">
@@ -78,7 +72,7 @@ export function CustomerList() {
           onQueryChange={setQuery}
           statusFilter={statusFilter}
           onStatusFilterChange={setStatusFilter}
-          resultCount={filteredCustomers.length}
+          resultCount={resultCount}
         />
       </div>
 
@@ -87,25 +81,25 @@ export function CustomerList() {
           <h2 className="font-serif text-xl font-bold text-slate-900">
             客户列表
             <span className="ml-2 text-sm font-medium text-slate-500">
-              共 {filteredCustomers.length} 位客户
+              共 {resultCount} 位客户
             </span>
           </h2>
         </div>
 
-        {filteredCustomers.length === 0 ? (
+        {resultCount === 0 ? (
           <div className="card p-16 text-center grain-overlay">
             <div className="w-20 h-20 mx-auto mb-5 rounded-full bg-gradient-to-br from-slate-50 to-slate-100 flex items-center justify-center">
               <Inbox className="w-10 h-10 text-slate-400" strokeWidth={1.8} />
             </div>
             <h3 className="font-serif text-xl font-bold text-slate-700 mb-2">
-              {query || statusFilter !== 'all' ? '没有找到匹配的客户' : '还没有客户数据'}
+              {hasActiveFilters ? '没有找到匹配的客户' : '还没有客户数据'}
             </h3>
             <p className="text-sm text-slate-500 font-medium mb-6 max-w-md mx-auto">
-              {query || statusFilter !== 'all'
+              {hasActiveFilters
                 ? '尝试调整搜索关键词或筛选条件，看看有没有更多结果'
                 : '点击右上角「新增客户」按钮，开始录入您的第一位客户'}
             </p>
-            {!query && statusFilter === 'all' && (
+            {!hasActiveFilters && (
               <button onClick={() => setModalOpen(true)} className="btn-primary">
                 <Plus className="w-4.5 h-4.5" strokeWidth={2.2} />
                 立即添加客户
@@ -114,7 +108,7 @@ export function CustomerList() {
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-            {filteredCustomers.map((customer, idx) => (
+            {customers.map((customer, idx) => (
               <CustomerCard key={customer.id} customer={customer} index={idx} />
             ))}
           </div>
@@ -124,7 +118,6 @@ export function CustomerList() {
       <CustomerModal
         open={modalOpen}
         onClose={() => setModalOpen(false)}
-        onSubmit={handleAddCustomer}
       />
     </div>
   );

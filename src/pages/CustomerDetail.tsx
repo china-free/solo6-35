@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   ArrowLeft,
@@ -11,32 +11,32 @@ import {
   Clock,
   Activity,
   ChevronDown,
+  AlertTriangle,
 } from 'lucide-react';
 import { STATUS_CONFIG, STATUS_ORDER } from '../config/statusConfig';
-import { useCustomerStore } from '../store/useCustomerStore';
+import {
+  useCustomerDetail,
+  useCustomerActions,
+  useShouldFollowUp,
+} from '../store/selectors';
 import { FollowupTimeline } from '../components/customer/FollowupTimeline';
 import { NoteForm } from '../components/customer/NoteForm';
 import { CustomerModal } from '../components/customer/CustomerModal';
 import { formatDateTime } from '../utils/helpers';
-import type { CustomerFormData, CustomerStatus } from '../types';
+import type { CustomerStatus } from '../types';
 
 export function CustomerDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const getCustomer = useCustomerStore((s) => s.getCustomer);
-  const getNotesByCustomer = useCustomerStore((s) => s.getNotesByCustomer);
-  const updateCustomerStatus = useCustomerStore((s) => s.updateCustomerStatus);
-  const updateCustomer = useCustomerStore((s) => s.updateCustomer);
-  const deleteCustomer = useCustomerStore((s) => s.deleteCustomer);
-  const addNote = useCustomerStore((s) => s.addNote);
+
+  const detail = useCustomerDetail(id);
+  const { deleteCustomer, changeCustomerStatus } = useCustomerActions();
+  const followUp = useShouldFollowUp(id);
 
   const [editModalOpen, setEditModalOpen] = useState(false);
   const [statusDropdownOpen, setStatusDropdownOpen] = useState(false);
 
-  const customer = id ? getCustomer(id) : undefined;
-  const notes = useMemo(() => (id ? getNotesByCustomer(id) : []), [id, getNotesByCustomer]);
-
-  if (!customer) {
+  if (!detail) {
     return (
       <div className="min-h-[60vh] flex flex-col items-center justify-center">
         <div className="w-20 h-20 rounded-full bg-slate-100 flex items-center justify-center mb-4">
@@ -52,16 +52,8 @@ export function CustomerDetail() {
     );
   }
 
+  const { customer, notes, noteCount } = detail;
   const config = STATUS_CONFIG[customer.status];
-
-  const handleAddNote = (content: string) => {
-    addNote(customer.id, { content });
-  };
-
-  const handleEditCustomer = (data: CustomerFormData) => {
-    updateCustomer(customer.id, data);
-    setEditModalOpen(false);
-  };
 
   const handleDeleteCustomer = () => {
     if (window.confirm(`确定要删除客户「${customer.name}」吗？相关跟进记录也会一并删除。`)) {
@@ -71,7 +63,7 @@ export function CustomerDetail() {
   };
 
   const handleChangeStatus = (status: CustomerStatus) => {
-    updateCustomerStatus(customer.id, status);
+    changeCustomerStatus(customer.id, status);
     setStatusDropdownOpen(false);
   };
 
@@ -131,6 +123,13 @@ export function CustomerDetail() {
                     更新于 {formatDateTime(customer.updatedAt)}
                   </span>
                 </div>
+
+                {followUp.needFollow && followUp.reason && (
+                  <div className="mt-4 flex items-center gap-2 px-4 py-2.5 rounded-xl bg-status-quoted/10 border border-status-quoted/20">
+                    <AlertTriangle className="w-4 h-4 text-status-quoted shrink-0" strokeWidth={2.2} />
+                    <span className="text-sm font-semibold text-status-quoted">{followUp.reason}</span>
+                  </div>
+                )}
               </div>
             </div>
 
@@ -173,7 +172,7 @@ export function CustomerDetail() {
                 <Activity className="w-4 h-4" strokeWidth={2.2} />
                 跟进次数
               </div>
-              <p className="font-serif text-xl font-bold text-slate-900">{notes.length} 次</p>
+              <p className="font-serif text-xl font-bold text-slate-900">{noteCount} 次</p>
             </div>
 
             <div className="relative">
@@ -248,7 +247,7 @@ export function CustomerDetail() {
               <span className="w-1 h-6 rounded-full" style={{ background: config.color }} />
               跟进记录时间线
               <span className="text-sm font-normal text-slate-500 ml-2">
-                ({notes.length} 条记录)
+                ({noteCount} 条记录)
               </span>
             </h2>
             <FollowupTimeline notes={notes} statusColor={config.color} />
@@ -260,14 +259,13 @@ export function CustomerDetail() {
             <span className="w-1 h-6 rounded-full bg-accent-500" />
             新增跟进
           </h2>
-          <NoteForm onSubmit={handleAddNote} />
+          <NoteForm customerId={customer.id} />
         </div>
       </div>
 
       <CustomerModal
         open={editModalOpen}
         onClose={() => setEditModalOpen(false)}
-        onSubmit={handleEditCustomer}
         initialData={customer}
       />
     </div>

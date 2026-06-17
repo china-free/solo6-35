@@ -1,63 +1,35 @@
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import { X, Building2, User, Phone, Activity, CheckCircle, AlertCircle } from 'lucide-react';
-import type { Customer, CustomerFormData } from '../../types';
+import type { Customer } from '../../types';
 import { STATUS_CONFIG, STATUS_ORDER } from '../../config/statusConfig';
-import { validatePhone } from '../../utils/helpers';
+import { useCustomerForm } from '../../hooks/useCustomerForm';
 
 interface CustomerModalProps {
   open: boolean;
   onClose: () => void;
-  onSubmit: (data: CustomerFormData) => void;
   initialData?: Customer | null;
 }
 
-export function CustomerModal({ open, onClose, onSubmit, initialData }: CustomerModalProps) {
-  const [form, setForm] = useState<CustomerFormData>({
-    name: '',
-    contact: '',
-    phone: '',
-    status: 'pending',
+export function CustomerModal({ open, onClose, initialData }: CustomerModalProps) {
+  const { form, errors, submitted, loading, setField, handleSubmit, reset } = useCustomerForm({
+    initialData,
+    onSuccess: () => {
+      onClose();
+      reset();
+    },
   });
-  const [errors, setErrors] = useState<Record<string, string>>({});
-  const [submitted, setSubmitted] = useState(false);
 
   useEffect(() => {
     if (open) {
-      setSubmitted(false);
-      if (initialData) {
-        setForm({
-          name: initialData.name,
-          contact: initialData.contact,
-          phone: initialData.phone,
-          status: initialData.status,
-        });
-      } else {
-        setForm({ name: '', contact: '', phone: '', status: 'pending' });
-      }
-      setErrors({});
+      reset();
     }
-  }, [open, initialData]);
+  }, [open, reset]);
 
   if (!open) return null;
 
-  const validate = (): boolean => {
-    const e: Record<string, string> = {};
-    if (!form.name.trim()) e.name = '请输入客户名称';
-    if (!form.contact.trim()) e.contact = '请输入联系人姓名';
-    if (!form.phone.trim()) {
-      e.phone = '请输入联系电话';
-    } else if (!validatePhone(form.phone.trim())) {
-      e.phone = '请输入有效的联系电话（支持手机号、座机、400电话等）';
-    }
-    setErrors(e);
-    return Object.keys(e).length === 0;
-  };
-
-  const handleSubmit = (e: React.FormEvent) => {
+  const onFormSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setSubmitted(true);
-    if (!validate()) return;
-    onSubmit(form);
+    await handleSubmit();
   };
 
   const handleOverlayClick = (e: React.MouseEvent) => {
@@ -95,7 +67,7 @@ export function CustomerModal({ open, onClose, onSubmit, initialData }: Customer
           </div>
         </div>
 
-        <form onSubmit={handleSubmit} className="p-7 space-y-5">
+        <form onSubmit={onFormSubmit} className="p-7 space-y-5">
           <div>
             <label className="flex items-center gap-2 text-sm font-semibold text-slate-800 mb-2">
               <Building2 className="w-4 h-4 text-primary-700" strokeWidth={2} />
@@ -105,10 +77,7 @@ export function CustomerModal({ open, onClose, onSubmit, initialData }: Customer
               type="text"
               placeholder="如：北京鑫源科技有限公司"
               value={form.name}
-              onChange={(e) => {
-                setForm({ ...form, name: e.target.value });
-                if (errors.name) setErrors({ ...errors, name: '' });
-              }}
+              onChange={(e) => setField('name', e.target.value)}
               className={`input-field ${submitted && errors.name ? 'border-status-lost focus:border-status-lost focus:ring-status-lost/10' : ''}`}
             />
             {submitted && errors.name && (
@@ -128,10 +97,7 @@ export function CustomerModal({ open, onClose, onSubmit, initialData }: Customer
                 type="text"
                 placeholder="如：张先生"
                 value={form.contact}
-                onChange={(e) => {
-                  setForm({ ...form, contact: e.target.value });
-                  if (errors.contact) setErrors({ ...errors, contact: '' });
-                }}
+                onChange={(e) => setField('contact', e.target.value)}
                 className={`input-field ${submitted && errors.contact ? 'border-status-lost focus:border-status-lost focus:ring-status-lost/10' : ''}`}
               />
               {submitted && errors.contact && (
@@ -150,10 +116,7 @@ export function CustomerModal({ open, onClose, onSubmit, initialData }: Customer
                 placeholder="如：13800138000 / 010-12345678"
                 value={form.phone}
                 maxLength={50}
-                onChange={(e) => {
-                  setForm({ ...form, phone: e.target.value });
-                  if (errors.phone) setErrors({ ...errors, phone: '' });
-                }}
+                onChange={(e) => setField('phone', e.target.value)}
                 className={`input-field ${submitted && errors.phone ? 'border-status-lost focus:border-status-lost focus:ring-status-lost/10' : ''}`}
               />
               <p className="text-[11px] text-slate-400 mt-1.5 font-medium leading-relaxed">
@@ -180,7 +143,7 @@ export function CustomerModal({ open, onClose, onSubmit, initialData }: Customer
                   <button
                     key={s}
                     type="button"
-                    onClick={() => setForm({ ...form, status: s })}
+                    onClick={() => setField('status', s)}
                     className={`relative py-2.5 px-2 rounded-xl text-[12px] font-bold transition-all duration-200 border-2 ${
                       selected
                         ? 'shadow-md scale-[1.02]'
@@ -207,10 +170,10 @@ export function CustomerModal({ open, onClose, onSubmit, initialData }: Customer
           </div>
 
           <div className="flex gap-3 pt-4 border-t border-slate-100">
-            <button type="button" onClick={onClose} className="btn-secondary flex-1">
+            <button type="button" onClick={onClose} className="btn-secondary flex-1" disabled={loading}>
               取消
             </button>
-            <button type="submit" className="btn-primary flex-1">
+            <button type="submit" className="btn-primary flex-1" disabled={loading}>
               <CheckCircle className="w-4.5 h-4.5" strokeWidth={2.2} />
               {initialData ? '保存修改' : '确认添加'}
             </button>

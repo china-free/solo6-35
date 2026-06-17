@@ -1,11 +1,44 @@
 import { create } from 'zustand';
-import type { Customer, CustomerFormData, FollowupNote, NoteFormData } from '../types';
-import { STORAGE_KEY } from '../config/statusConfig';
-import { generateId, nowISO } from '../utils/helpers';
+import type { Customer, CustomerFormData, FollowupNote, NoteFormData, CustomerStatus } from '../types';
+import { STATUS_CONFIG, STATUS_ORDER, STORAGE_KEY } from '../config/statusConfig';
+import { generateId, nowISO, validatePhone } from '../utils/helpers';
 
 interface AppData {
   customers: Customer[];
   notes: FollowupNote[];
+}
+
+interface FilterParams {
+  query: string;
+  status: CustomerStatus | 'all';
+  sortBy?: 'name' | 'createdAt' | 'updatedAt';
+  sortOrder?: 'asc' | 'desc';
+}
+
+interface StatusStat {
+  status: CustomerStatus;
+  label: string;
+  color: string;
+  count: number;
+  percent: number;
+}
+
+interface Statistics {
+  total: number;
+  byStatus: StatusStat[];
+  pieData: Array<{ name: string; value: number; color: string; status: CustomerStatus }>;
+}
+
+interface ValidationResult<T extends object = CustomerFormData> {
+  valid: boolean;
+  errors: Partial<Record<keyof T, string>>;
+}
+
+interface CustomerDetail {
+  customer: Customer;
+  notes: FollowupNote[];
+  noteCount: number;
+  lastNoteAt: string | null;
 }
 
 const INITIAL_DATA: AppData = {
@@ -154,14 +187,26 @@ const initial = loadFromStorage();
 interface CustomerStore {
   customers: Customer[];
   notes: FollowupNote[];
-  addCustomer: (data: CustomerFormData) => Customer;
-  updateCustomer: (id: string, data: Partial<CustomerFormData>) => void;
+
+  validateCustomerForm: (data: Partial<CustomerFormData>, forEdit?: boolean) => ValidationResult;
+  validateNoteForm: (data: NoteFormData) => ValidationResult;
+
+  getFilteredCustomers: (params: Partial<FilterParams>) => Customer[];
+  getStatistics: () => Statistics;
+  getCustomerDetail: (id: string) => CustomerDetail | null;
+  getCustomerNotes: (customerId: string) => FollowupNote[];
+  getCustomerById: (id: string) => Customer | undefined;
+
+  addCustomer: (data: CustomerFormData) => { success: boolean; customer?: Customer; errors?: ValidationResult['errors'] };
+  updateCustomer: (id: string, data: Partial<CustomerFormData>) => { success: boolean; errors?: ValidationResult['errors'] };
   deleteCustomer: (id: string) => void;
-  updateCustomerStatus: (id: string, status: CustomerFormData['status']) => void;
-  getCustomer: (id: string) => Customer | undefined;
-  getNotesByCustomer: (customerId: string) => FollowupNote[];
-  addNote: (customerId: string, data: NoteFormData) => FollowupNote;
-  searchFilter: (query: string, statusFilter: string) => Customer[];
+  changeCustomerStatus: (id: string, status: CustomerStatus) => void;
+
+  addNote: (customerId: string, data: NoteFormData) => { success: boolean; note?: FollowupNote; errors?: ValidationResult['errors'] };
+
+  shouldFollowUp: (customerId: string) => { needFollow: boolean; reason?: string };
+  getRecentActivity: (limit?: number) => Array<{ type: 'note' | 'status' | 'create'; customer: Customer; note?: FollowupNote; timestamp: string }>;
+
   resetData: () => void;
 }
 
@@ -169,7 +214,143 @@ export const useCustomerStore = create<CustomerStore>((set, get) => ({
   customers: initial.customers,
   notes: initial.notes,
 
+  validateCustomerForm: (data, forEdit = false) => {
+    const errors: ValidationResult['errors'] = {};
+
+    if (!forEdit || data.name !== undefined) {
+      const name = data.name?.trim() ?? '';
+      if (!name) errors.name = '请输入客户名称';
+      else if (name.length < 2) errors.name = '客户名称至少2个字符';
+    }
+
+    if (!forEdit || data.contact !== undefined) {
+      const contact = data.contact?.trim() ?? '';
+      if (!contact) errors.contact = '请输入联系人姓名';
+    }
+
+    if (!forEdit || data.phone !== undefined) {
+      const phone = data.phone?.trim() ?? '';
+      if (!phone) {
+        errors.phone = '请输入联系电话';
+      } else if (!validatePhone(phone)) {
+        errors.phone = '请输入有效的联系电话（支持手机号、座机、400电话等）';
+      }
+    }
+
+    return {
+      valid: Object.keys(errors).length === 0,
+      errors,
+    };
+  },
+
+  validateNoteForm: (data): ValidationResult<NoteFormData> => {
+    const errors: Partial<Record<keyof NoteFormData, string>> = {};
+    const content = data.content.trim();
+
+    if (!content) errors.content = '请输入跟进内容';
+    else if (content.length < 2) errors.content = '跟进内容至少2个字符';
+    else if (content.length > 500) errors.content = '跟进内容不能超过500个字符';
+
+    return {
+      valid: Object.keys(errors).length === 0,
+      errors,
+    };
+  },
+
+  getFilteredCustomers: (params) => {
+    const { customers } = get();
+    const { query = '', status = 'all', sortBy = 'updatedAt', sortOrder = 'desc' } = params;
+
+    let result = [...customers];
+
+    if (query.trim()) {
+      const q = query.trim().toLowerCase();
+      result = result.filter((c) => c.name.toLowerCase().includes(q));
+    }
+
+    if (status !== 'all') {
+      result = result.filter((c) => c.status === status);
+    }
+
+    result.sort((a, b) => {
+      let comparison = 0;
+      switch (sortBy) {
+        case 'name':
+          comparison = a.name.localeCompare(b.name, 'zh-CN');
+          break;
+        case 'createdAt':
+          comparison = new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+          break;
+        case 'updatedAt':
+        default:
+          comparison = new Date(a.updatedAt).getTime() - new Date(b.updatedAt).getTime();
+          break;
+      }
+      return sortOrder === 'asc' ? comparison : -comparison;
+    });
+
+    return result;
+  },
+
+  getStatistics: () => {
+    const { customers } = get();
+    const total = customers.length;
+
+    const byStatus = STATUS_ORDER.map((status) => {
+      const count = customers.filter((c) => c.status === status).length;
+      return {
+        status,
+        label: STATUS_CONFIG[status].label,
+        color: STATUS_CONFIG[status].color,
+        count,
+        percent: total > 0 ? Math.round((count / total) * 100) : 0,
+      };
+    });
+
+    const pieData = byStatus
+      .filter((s) => s.count > 0)
+      .map((s) => ({
+        name: s.label,
+        value: s.count,
+        color: s.color,
+        status: s.status,
+      }));
+
+    return { total, byStatus, pieData };
+  },
+
+  getCustomerDetail: (id) => {
+    const customer = get().customers.find((c) => c.id === id);
+    if (!customer) return null;
+
+    const notes = get()
+      .notes.filter((n) => n.customerId === id)
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+
+    return {
+      customer,
+      notes,
+      noteCount: notes.length,
+      lastNoteAt: notes.length > 0 ? notes[0].createdAt : null,
+    };
+  },
+
+  getCustomerNotes: (customerId) => {
+    return get()
+      .notes.filter((n) => n.customerId === customerId)
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  },
+
+  getCustomerById: (id) => {
+    return get().customers.find((c) => c.id === id);
+  },
+
   addCustomer: (data) => {
+    const validation = get().validateCustomerForm(data);
+    if (!validation.valid) {
+      return { success: false, errors: validation.errors };
+    }
+
     const now = nowISO();
     const customer: Customer = {
       id: generateId(),
@@ -177,15 +358,22 @@ export const useCustomerStore = create<CustomerStore>((set, get) => ({
       createdAt: now,
       updatedAt: now,
     };
+
     set((state) => {
       const newCustomers = [customer, ...state.customers];
       saveToStorage({ customers: newCustomers, notes: state.notes });
       return { customers: newCustomers };
     });
-    return customer;
+
+    return { success: true, customer };
   },
 
   updateCustomer: (id, data) => {
+    const validation = get().validateCustomerForm(data, true);
+    if (!validation.valid) {
+      return { success: false, errors: validation.errors };
+    }
+
     set((state) => {
       const newCustomers = state.customers.map((c) =>
         c.id === id ? { ...c, ...data, updatedAt: nowISO() } : c,
@@ -193,6 +381,8 @@ export const useCustomerStore = create<CustomerStore>((set, get) => ({
       saveToStorage({ customers: newCustomers, notes: state.notes });
       return { customers: newCustomers };
     });
+
+    return { success: true };
   },
 
   deleteCustomer: (id) => {
@@ -204,7 +394,7 @@ export const useCustomerStore = create<CustomerStore>((set, get) => ({
     });
   },
 
-  updateCustomerStatus: (id, status) => {
+  changeCustomerStatus: (id, status) => {
     set((state) => {
       const newCustomers = state.customers.map((c) =>
         c.id === id ? { ...c, status, updatedAt: nowISO() } : c,
@@ -214,23 +404,19 @@ export const useCustomerStore = create<CustomerStore>((set, get) => ({
     });
   },
 
-  getCustomer: (id) => {
-    return get().customers.find((c) => c.id === id);
-  },
-
-  getNotesByCustomer: (customerId) => {
-    return get()
-      .notes.filter((n) => n.customerId === customerId)
-      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-  },
-
   addNote: (customerId, data) => {
+    const validation = get().validateNoteForm(data);
+    if (!validation.valid) {
+      return { success: false, errors: validation.errors };
+    }
+
     const note: FollowupNote = {
       id: generateId(),
       customerId,
-      content: data.content,
+      content: data.content.trim(),
       createdAt: nowISO(),
     };
+
     set((state) => {
       const newNotes = [note, ...state.notes];
       const newCustomers = state.customers.map((c) =>
@@ -239,16 +425,81 @@ export const useCustomerStore = create<CustomerStore>((set, get) => ({
       saveToStorage({ customers: newCustomers, notes: newNotes });
       return { notes: newNotes, customers: newCustomers };
     });
-    return note;
+
+    return { success: true, note };
   },
 
-  searchFilter: (query, statusFilter) => {
-    const { customers } = get();
-    return customers.filter((c) => {
-      const matchQuery = query.trim() === '' || c.name.toLowerCase().includes(query.trim().toLowerCase());
-      const matchStatus = statusFilter === 'all' || c.status === statusFilter;
-      return matchQuery && matchStatus;
+  shouldFollowUp: (customerId) => {
+    const detail = get().getCustomerDetail(customerId);
+    if (!detail) return { needFollow: false };
+
+    const { customer, lastNoteAt } = detail;
+
+    if (customer.status === 'pending') {
+      return { needFollow: true, reason: '新客户待首次联系' };
+    }
+
+    if (customer.status === 'lost') {
+      return { needFollow: false };
+    }
+
+    if (customer.status === 'closed') {
+      if (!lastNoteAt) return { needFollow: true, reason: '成交客户需定期维护' };
+      const daysSinceLastNote = Math.floor(
+        (Date.now() - new Date(lastNoteAt).getTime()) / (1000 * 60 * 60 * 24),
+      );
+      if (daysSinceLastNote > 30) {
+        return { needFollow: true, reason: '成交客户超过30天未跟进，建议回访维护' };
+      }
+      return { needFollow: false };
+    }
+
+    if (!lastNoteAt) {
+      return { needFollow: true, reason: '暂无跟进记录，建议尽快联系' };
+    }
+
+    const daysSinceLastNote = Math.floor(
+      (Date.now() - new Date(lastNoteAt).getTime()) / (1000 * 60 * 60 * 24),
+    );
+
+    if (customer.status === 'contacted' && daysSinceLastNote > 3) {
+      return { needFollow: true, reason: '已联系客户超过3天未跟进' };
+    }
+
+    if (customer.status === 'quoted' && daysSinceLastNote > 7) {
+      return { needFollow: true, reason: '已报价客户超过7天未跟进' };
+    }
+
+    return { needFollow: false };
+  },
+
+  getRecentActivity: (limit = 10) => {
+    const { customers, notes } = get();
+    const activities: Array<{ type: 'note' | 'status' | 'create'; customer: Customer; note?: FollowupNote; timestamp: string }> = [];
+
+    customers.forEach((customer) => {
+      activities.push({
+        type: 'create',
+        customer,
+        timestamp: customer.createdAt,
+      });
     });
+
+    notes.forEach((note) => {
+      const customer = customers.find((c) => c.id === note.customerId);
+      if (customer) {
+        activities.push({
+          type: 'note',
+          customer,
+          note,
+          timestamp: note.createdAt,
+        });
+      }
+    });
+
+    activities.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+
+    return activities.slice(0, limit);
   },
 
   resetData: () => {

@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import type { Customer } from '../../types';
 import { STATUS_CONFIG } from '../../config/statusConfig';
 import { formatDateTime, getRelativeTime } from '../../utils/helpers';
-import { useCustomerStore } from '../../store/useCustomerStore';
+import { useCustomerNotes, useShouldFollowUp } from '../../store/selectors';
 
 interface CustomerCardProps {
   customer: Customer;
@@ -13,9 +13,11 @@ interface CustomerCardProps {
 
 export const CustomerCard = memo(function CustomerCard({ customer, index }: CustomerCardProps) {
   const navigate = useNavigate();
-  const getNotesByCustomer = useCustomerStore((s) => s.getNotesByCustomer);
-  const notes = getNotesByCustomer(customer.id);
+  const notes = useCustomerNotes(customer.id);
+  const followUp = useShouldFollowUp(customer.id);
   const config = STATUS_CONFIG[customer.status];
+
+  const latestNote = notes.length > 0 ? notes[0] : null;
 
   return (
     <div
@@ -30,8 +32,17 @@ export const CustomerCard = memo(function CustomerCard({ customer, index }: Cust
         style={{ background: config.color }}
       />
 
+      {followUp.needFollow && (
+        <div className="absolute top-4 right-4 z-10">
+          <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-[10px] font-bold bg-status-lost text-white shadow-md animate-pulse">
+            <span className="w-1.5 h-1.5 rounded-full bg-white" />
+            需跟进
+          </span>
+        </div>
+      )}
+
       <div className="flex items-start justify-between mb-4">
-        <div className="flex items-center gap-3 min-w-0 flex-1">
+        <div className="flex items-center gap-3 min-w-0 flex-1 pr-16">
           <div
             className="w-12 h-12 rounded-xl flex items-center justify-center shrink-0 shadow-sm transition-transform duration-300 group-hover:scale-110"
             style={{ background: `${config.color}12` }}
@@ -76,11 +87,11 @@ export const CustomerCard = memo(function CustomerCard({ customer, index }: Cust
         <div className="flex items-center gap-1.5 text-xs text-slate-500 font-medium">
           <MessageSquare className="w-3.5 h-3.5" strokeWidth={2} />
           <span>{notes.length} 条跟进记录</span>
-          {notes.length > 0 && (
-            <span className="text-slate-400 mx-1">·</span>
-          )}
-          {notes.length > 0 && (
-            <span>最新 {formatDateTime(notes[0].createdAt).slice(5)}</span>
+          {latestNote && (
+            <>
+              <span className="text-slate-400 mx-1">·</span>
+              <span>最新 {formatDateTime(latestNote.createdAt).slice(5)}</span>
+            </>
           )}
         </div>
         <div className="flex items-center gap-1 text-primary-700 text-sm font-semibold group-hover:gap-2 transition-all">

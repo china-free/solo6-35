@@ -1,20 +1,15 @@
 import { Users, PieChart, Settings, HelpCircle, RotateCcw, BarChart3 } from 'lucide-react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { useCustomerStore } from '../../store/useCustomerStore';
+import { useCustomerActions } from '../../store/selectors';
 
-interface SidebarProps {
-  onReset?: () => void;
-}
-
-export function Sidebar({ onReset }: SidebarProps) {
+export function Sidebar() {
   const location = useLocation();
   const navigate = useNavigate();
-  const resetData = useCustomerStore((s) => s.resetData);
+  const { resetData } = useCustomerActions();
 
   const handleReset = () => {
     if (window.confirm('确定要重置所有数据吗？此操作不可撤销。')) {
       resetData();
-      onReset?.();
     }
   };
 

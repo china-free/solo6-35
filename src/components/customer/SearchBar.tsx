@@ -1,11 +1,12 @@
 import { Search, X, Filter } from 'lucide-react';
 import { STATUS_CONFIG, STATUS_ORDER } from '../../config/statusConfig';
+import type { CustomerStatus } from '../../types';
 
 interface SearchBarProps {
   query: string;
   onQueryChange: (q: string) => void;
-  statusFilter: string;
-  onStatusFilterChange: (s: string) => void;
+  statusFilter: CustomerStatus | 'all';
+  onStatusFilterChange: (s: CustomerStatus | 'all') => void;
   resultCount: number;
 }
 
@@ -59,7 +60,7 @@ export function SearchBar({ query, onQueryChange, statusFilter, onStatusFilterCh
           return (
             <button
               key={f.key}
-              onClick={() => onStatusFilterChange(f.key)}
+              onClick={() => onStatusFilterChange(f.key as CustomerStatus | 'all')}
               className={`filter-tag ${style}`}
             >
               {'color' in f && (

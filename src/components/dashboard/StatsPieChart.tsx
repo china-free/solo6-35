@@ -1,24 +1,8 @@
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend } from 'recharts';
-import { STATUS_CONFIG, STATUS_ORDER } from '../../config/statusConfig';
-import { useCustomerStore } from '../../store/useCustomerStore';
-import { useMemo } from 'react';
+import { useStatistics } from '../../store/selectors';
 
 export function StatsPieChart() {
-  const customers = useCustomerStore((s) => s.customers);
-
-  const data = useMemo(() => {
-    return STATUS_ORDER.map((status) => {
-      const count = customers.filter((c) => c.status === status).length;
-      return {
-        name: STATUS_CONFIG[status].label,
-        value: count,
-        color: STATUS_CONFIG[status].color,
-        status,
-      };
-    }).filter((d) => d.value > 0);
-  }, [customers]);
-
-  const total = useMemo(() => customers.length, [customers]);
+  const { pieData, total } = useStatistics();
 
   const renderCustomLabel = ({ cx, cy, midAngle, innerRadius, outerRadius, percent }: any) => {
     if (percent < 0.05) return null;
@@ -83,7 +67,7 @@ export function StatsPieChart() {
       <ResponsiveContainer width="100%" height={280}>
         <PieChart>
           <Pie
-            data={data}
+            data={pieData}
             cx="50%"
             cy="45%"
             innerRadius={75}
@@ -95,7 +79,7 @@ export function StatsPieChart() {
             animationBegin={100}
             animationDuration={1000}
           >
-            {data.map((entry, index) => (
+            {pieData.map((entry, index) => (
               <Cell
                 key={`cell-${index}`}
                 fill={entry.color}

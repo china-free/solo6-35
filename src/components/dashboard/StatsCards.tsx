@@ -1,8 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Users, Phone, FileText, CheckCircle2, XCircle, ArrowUpRight } from 'lucide-react';
-import { STATUS_CONFIG, STATUS_ORDER } from '../../config/statusConfig';
-import { useCustomerStore } from '../../store/useCustomerStore';
-import { useMemo } from 'react';
+import { useStatistics } from '../../store/selectors';
 
 const STATUS_ICONS = {
   pending: Users,
@@ -40,21 +38,11 @@ function AnimatedNumber({ value }: { value: number }) {
 }
 
 export function StatsCards() {
-  const customers = useCustomerStore((s) => s.customers);
-
-  const stats = useMemo(() => {
-    const total = customers.length;
-    const byStatus = STATUS_ORDER.map((status) => ({
-      status,
-      count: customers.filter((c) => c.status === status).length,
-      percent: total > 0 ? Math.round((customers.filter((c) => c.status === status).length / total) * 100) : 0,
-    }));
-    return { total, byStatus };
-  }, [customers]);
+  const statistics = useStatistics();
 
   const totalCard = {
     label: '客户总数',
-    value: stats.total,
+    value: statistics.total,
     color: '#1e3a5f',
     bgColor: 'bg-primary-50',
     borderColor: 'border-primary-100',
@@ -89,8 +77,7 @@ export function StatsCards() {
       </div>
 
       <div className="grid grid-cols-2 gap-3">
-        {stats.byStatus.map((item, idx) => {
-          const config = STATUS_CONFIG[item.status];
+        {statistics.byStatus.map((item, idx) => {
           const Icon = STATUS_ICONS[item.status];
           return (
             <div
@@ -98,22 +85,22 @@ export function StatsCards() {
               className="card grain-overlay overflow-hidden p-4 relative"
               style={{
                 animation: `fadeInUp 0.4s ease-out ${0.2 + idx * 0.08}s both`,
-                borderColor: `${config.color}15`,
+                borderColor: `${item.color}15`,
               }}
             >
               <div className="flex items-start justify-between mb-2">
                 <div
                   className="w-9 h-9 rounded-lg flex items-center justify-center"
-                  style={{ background: `${config.color}15` }}
+                  style={{ background: `${item.color}15` }}
                 >
-                  <Icon className="w-4.5 h-4.5" style={{ color: config.color }} strokeWidth={2.2} />
+                  <Icon className="w-4.5 h-4.5" style={{ color: item.color }} strokeWidth={2.2} />
                 </div>
-                <span className="text-[11px] font-bold px-2 py-0.5 rounded-full" style={{ background: config.bgColor, color: config.color }}>
+                <span className="text-[11px] font-bold px-2 py-0.5 rounded-full" style={{ background: `${item.color}15`, color: item.color }}>
                   {item.percent}%
                 </span>
               </div>
-              <p className="text-[13px] text-slate-500 font-medium mb-0.5">{config.label}</p>
-              <span className="font-serif text-2xl font-bold" style={{ color: config.color }}>
+              <p className="text-[13px] text-slate-500 font-medium mb-0.5">{item.label}</p>
+              <span className="font-serif text-2xl font-bold" style={{ color: item.color }}>
                 <AnimatedNumber value={item.count} />
               </span>
             </div>
